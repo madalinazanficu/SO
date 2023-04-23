@@ -5,6 +5,7 @@
 
 /* === TASK === */
 
+
 /* Creates a task that thread must execute */
 os_task_t *task_create(void *arg, void (*f)(void *))
 {
