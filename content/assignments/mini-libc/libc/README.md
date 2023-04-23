@@ -4,7 +4,7 @@
 ### Overview
 The main purpose of this assignment was to understand how the standard C library really works:
 1. Making system calls for privileged operations such as:
-        - I/O functionalities: puts(), open(), close(), truncate(), lseek(), state() 
+        - I/O functionalities: puts(), open(), close(), truncate(), lseek(), stat() 
         - memory management: malloc(), calloc(), free(), mmap(), realloc()
         - interrupt execution for a certain number of seconds: sleep(), nanosleep()
 

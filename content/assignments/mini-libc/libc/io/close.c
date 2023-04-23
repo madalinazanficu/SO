@@ -7,6 +7,10 @@
 
 int close(int fd)
 {
-	/* TODO: Implement close(). */
-	return -1;
+	int ok = syscall(__NR_close, fd);;
+	if (ok < 0) {
+		errno = -ok;
+		return -1;
+	}
+	return ok;
 }

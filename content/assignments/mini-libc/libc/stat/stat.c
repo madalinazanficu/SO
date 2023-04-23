@@ -3,9 +3,17 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <internal/syscall.h>
 
 int stat(const char *restrict path, struct stat *restrict buf)
 {
-	/* TODO: Implement stat(). */
-	return -1;
+	int ok = syscall(__NR_stat, path, buf);
+
+	/* Invalid path */
+	if (ok < 0) {
+		errno = -ok;
+		return -1;
+	}
+
+	return ok;
 }

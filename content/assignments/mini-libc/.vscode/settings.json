@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "fcntl.h": "c",
+        "errno.h": "c",
+        "syscall.h": "c",
+        "unistd.h": "c"
+    }
+}

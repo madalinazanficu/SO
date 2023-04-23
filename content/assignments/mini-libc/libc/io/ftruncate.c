@@ -6,6 +6,10 @@
 
 int ftruncate(int fd, off_t length)
 {
-	/* TODO: Implement ftruncate(). */
-	return -1;
+	int ok = syscall(__NR_ftruncate, fd, length);
+	if (ok < 0) {
+		errno = -ok;
+		return -1;
+	}
+	return ok;
 }

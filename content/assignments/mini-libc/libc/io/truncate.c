@@ -6,6 +6,10 @@
 
 int truncate(const char *path, off_t length)
 {
-	/* TODO: Implement truncate(). */
-	return -1;
+	int ok = syscall(__NR_truncate, path, length);
+	if (ok < 0) {
+		errno = -ok;
+		return -1;
+	}
+	return ok;
 }

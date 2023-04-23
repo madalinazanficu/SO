@@ -2,9 +2,17 @@
 
 #include <sys/stat.h>
 #include <errno.h>
+#include <internal/syscall.h>
 
 int fstat(int fd, struct stat *st)
 {
-	/* TODO: Implement fstat(). */
-	return -1;
+	int ok = syscall(__NR_fstat, fd, st);
+
+	/* Invalid path */
+	if (ok < 0) {
+		errno = -ok;
+		return -1;
+	}
+
+	return ok;
 }
