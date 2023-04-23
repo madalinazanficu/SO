@@ -1,6 +1,6 @@
 SRC_PATH ?= ../src
 CC = gcc
-CPPFLAGS = -I../utils -I $(SRC_PATH)
+CPPFLAGS = -I../utils
 CFLAGS = -fPIC -Wall -Wextra -g
 LDFLAGS = -L$(SRC_PATH)
 LDLIBS = -losmem
