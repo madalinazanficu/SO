@@ -6,12 +6,13 @@
 
 typedef struct thread_arg_t thread_arg_t;
 struct thread_arg_t {
+    int id;
     pthread_mutex_t *mutex;
     os_threadpool_t *tp;
 };
 
 // Syncronization elements
-pthread_mutex_t q_mutex = PTHREAD_MUTEX_INITIALIZER;
+thread_arg_t *threads_args;
 
 
 /* Creates a task that thread must execute */
@@ -40,26 +41,16 @@ void add_task_in_queue(os_threadpool_t *tp, os_task_t *t)
     new_node->task = t;
     new_node->next = NULL;
 
-
-    // First task node added
-    pthread_mutex_lock(&q_mutex);
+    // First task node added -> set the head of the queue
     if (task_node == NULL) {
-
-        // Set the head of the queue
         tp->tasks = new_node;
-        pthread_mutex_unlock(&q_mutex);
         return;
     }
-    pthread_mutex_unlock(&q_mutex);
-
 
     // Find the last position where to add the task node
-    pthread_mutex_lock(&q_mutex);
     while (task_node->next != NULL) {
         task_node = task_node->next;
     }
-    pthread_mutex_unlock(&q_mutex);
-
 
     // Create the links between nodes
     task_node->next = new_node;
@@ -68,17 +59,17 @@ void add_task_in_queue(os_threadpool_t *tp, os_task_t *t)
 /* Get the head of task queue from threadpool */
 os_task_t *get_task(os_threadpool_t *tp)
 {
+    if (tp == NULL) {
+        return NULL;
+    }
     
-    pthread_mutex_lock(&q_mutex);
     if (tp->tasks == NULL) {
         return NULL;
     }
 
     os_task_queue_t *head = tp->tasks;
     tp->tasks = tp->tasks->next;
-    return head;
-
-    pthread_mutex_unlock(&q_mutex);
+    return head->task;
 }
 
 /* === THREAD POOL === */
@@ -92,24 +83,23 @@ os_threadpool_t *threadpool_create(unsigned int nTasks, unsigned int nThreads)
         exit(1);
     }
 
+    // Syncronization elemnts
+    pthread_mutex_init(&tp->taskLock, NULL);
+
     tp->should_stop = 0;
     tp->num_threads = nThreads;
     tp->tasks = NULL;
 
     // Allocate memory for threads
     tp->threads = calloc(nThreads, sizeof(pthread_t));
-    thread_arg_t threads_args[nThreads];
+    threads_args = calloc(nThreads, sizeof(thread_arg_t));
 
-    // Syncronization elemnts
-    pthread_mutex_t mutex;
-    p_thread_mutex_init(&mutex, NULL);
 
     // Create N threads
     for (int i = 0; i < nThreads; i++) {
-        thread_arg_t arg;
-        arg.mutex = &mutex;
-        arg.tp = tp;
-        threads_args[i] = arg;
+        threads_args[i].mutex = &tp->taskLock;
+        threads_args[i].tp = tp;
+        threads_args[i].id = i;
 
         pthread_create(&tp->threads[i], NULL, thread_loop_function, &threads_args[i]);
     }
@@ -125,10 +115,19 @@ void *thread_loop_function(void *args)
     pthread_mutex_t *mutex = arg->mutex;
     os_threadpool_t *tp = arg->tp;
 
-    // Get a task from the queue and execute it
-    os_task_t *node_task = get_task(tp);
-    int index = node_task->argument;
-    node_task->task(index);
+
+    while (tp->should_stop == 0) {
+
+        // Get a task from the queue and execute it
+        pthread_mutex_lock(mutex);
+        os_task_t *task = get_task(tp);
+        pthread_mutex_unlock(mutex);
+
+        if (task != NULL) {
+            void *argument = task->argument;
+            task->task(argument);
+        }
+    }
 
     return NULL;
 }
@@ -137,18 +136,16 @@ void *thread_loop_function(void *args)
 void threadpool_stop(os_threadpool_t *tp, int (*processingIsDone)(os_threadpool_t *))
 {
     // Wait for all threads to finish their tasks
-    int isDone = processingIsDone(tp);
+    while(!processingIsDone(tp));
 
     // Stop the threadpool
-    if (isDone == 1) {
-        tp->should_stop = 1;
+    pthread_mutex_t *mutex = &tp->taskLock;
+    pthread_mutex_lock(mutex);
+    tp->should_stop = 1;
+    pthread_mutex_unlock(mutex);
 
-        // Wait for all threads to finish
-        for (int i = 0; i < tp->num_threads; i++) {
-            pthread_join(tp->threads[i], NULL);
-        }
+    // Wait for all threads to finish
+    for (int i = 0; i < tp->num_threads; i++) {
+        pthread_join(tp->threads[i], NULL);
     }
-
-    // TODO : Find a way to reacall processingIsDone() function
-    //       after a certain amount of time
 }
