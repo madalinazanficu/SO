@@ -19,8 +19,28 @@ int ind[MAX_NODES];
 pthread_mutex_t sum_mutex;
 
 
+void visit_node(int index);
+void sum_fun (void *arg);
+
+void visit_node(int node) {
+
+    // Step 1: Check if the node is visited and mark it
+    pthread_mutex_lock(&tp->taskLock);
+    if (graph->visited[node] == 0) {
+        graph->visited[node] = 1;
+
+        // Step 2: Create the task
+        os_task_t *task = task_create(&ind[node], sum_fun);
+
+        // Step 3: Submit the task to the threadpool
+        add_task_in_queue(tp, task);
+    } 
+    pthread_mutex_unlock(&tp->taskLock);
+}
+
+
 // Function that is passed as an argument to task_create
-void sum_fun (void *arg) {
+void sum_fun(void *arg) {
 
     // Get the index of the node
     int index = *(int*) arg;
@@ -30,28 +50,16 @@ void sum_fun (void *arg) {
     sum += node->nodeInfo;
     pthread_mutex_unlock(&sum_mutex);
 
-
-
     // Submit tasks for the unvisited neighbours of the node
     for (int i = 0; i < node->cNeighbours; i++) {
         int neighbour = node->neighbours[i];
-
-        pthread_mutex_lock(&tp->taskLock);
-        if (graph->visited[neighbour] == 0) {
-
-            graph->visited[neighbour] = 1;
-
-            os_task_t *task = task_create(&ind[neighbour], sum_fun);
-
-            add_task_in_queue(tp, task);
-        }
-        pthread_mutex_unlock(&tp->taskLock);
+        visit_node(neighbour);
     }
 }
 
 // Function that checks if all the nodes have been processed
 int processingIsDone(os_threadpool_t *tp) {
-    
+
     for (int i = 0; i < graph->nCount; i++) {
         if (graph->visited[i] == 0) {
             return 0;
@@ -64,29 +72,6 @@ int processingIsDone(os_threadpool_t *tp) {
     return 1;
 }
 
-
-void visit_node(int index) {
-
-    // One thread at a time should check if the node has been visited
-    pthread_mutex_lock(&tp->taskLock);
-    if (graph->visited[index] == 1) {
-        pthread_mutex_unlock(&tp->taskLock);
-        return;
-    }
-    pthread_mutex_unlock(&tp->taskLock);
-
-    // Mark the node as visited
-    pthread_mutex_lock(&tp->taskLock);
-    graph->visited[index] = 1;
-    pthread_mutex_unlock(&tp->taskLock);
-
-    // Create a task for the node
-    os_task_t *task = task_create(&ind[index], sum_fun);
-
-    // Submit the task to the threadpool (adding a task is already synchronized)
-    add_task_in_queue(tp, task);
-}
-
 void traverse_graph() {
 
     // Step 1: Create the threadpool
@@ -94,17 +79,7 @@ void traverse_graph() {
 
     // Step 2: Create tasks for the root of each connected component
     for (int i = 0; i < graph->nCount; i++) {
-        pthread_mutex_lock(&tp->taskLock);
-        if (graph->visited[i] == 0) {
-            graph->visited[i] = 1;
-
-            // Step 3: Create the task
-            os_task_t *task = task_create(&ind[i], sum_fun);
-
-            // Step 4: Submit the task to the threadpool
-            add_task_in_queue(tp, task);
-        }
-        pthread_mutex_unlock(&tp->taskLock);
+        visit_node(i);
     }
 
     // Step 5: Shutdown the threadpool using threadpool_stop

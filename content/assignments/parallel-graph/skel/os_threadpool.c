@@ -6,12 +6,9 @@
 
 typedef struct thread_arg_t thread_arg_t;
 struct thread_arg_t {
-    int id;
-    pthread_mutex_t *mutex;
     os_threadpool_t *tp;
 };
 
-// Syncronization elements
 thread_arg_t *threads_args;
 
 
@@ -38,6 +35,11 @@ void add_task_in_queue(os_threadpool_t *tp, os_task_t *t)
 
     // Create a new node
     os_task_queue_t *new_node = calloc(1, sizeof(os_task_queue_t));
+    if (new_node == NULL) {
+        perror("Error creating task node");
+        exit(1);
+    }
+
     new_node->task = t;
     new_node->next = NULL;
 
@@ -92,14 +94,21 @@ os_threadpool_t *threadpool_create(unsigned int nTasks, unsigned int nThreads)
 
     // Allocate memory for threads
     tp->threads = calloc(nThreads, sizeof(pthread_t));
-    threads_args = calloc(nThreads, sizeof(thread_arg_t));
+    if (tp->threads == NULL) {
+        perror("Error creating threads");
+        exit(1);
+    }
 
+    // Allocate memory for threads arguments
+    threads_args = calloc(nThreads, sizeof(thread_arg_t));
+    if (threads_args == NULL) {
+        perror("Error creating threads");
+        exit(1);
+    }
 
     // Create N threads
     for (int i = 0; i < nThreads; i++) {
-        threads_args[i].mutex = &tp->taskLock;
         threads_args[i].tp = tp;
-        threads_args[i].id = i;
 
         pthread_create(&tp->threads[i], NULL, thread_loop_function, &threads_args[i]);
     }
@@ -112,10 +121,10 @@ void *thread_loop_function(void *args)
 {
     // Get the arguments of the current thread
     thread_arg_t *arg = (thread_arg_t *) args;
-    pthread_mutex_t *mutex = arg->mutex;
     os_threadpool_t *tp = arg->tp;
+    pthread_mutex_t *mutex = &arg->tp->taskLock;
 
-
+    // Loop until the threadpool is stopped
     while (tp->should_stop == 0) {
 
         // Get a task from the queue and execute it
@@ -136,15 +145,10 @@ void *thread_loop_function(void *args)
 void threadpool_stop(os_threadpool_t *tp, int (*processingIsDone)(os_threadpool_t *))
 {
     // Wait for all threads to finish their tasks
-    while(!processingIsDone(tp));
+    while(processingIsDone(tp) == 0);
 
-    // Stop the threadpool
-    pthread_mutex_t *mutex = &tp->taskLock;
-    pthread_mutex_lock(mutex);
     tp->should_stop = 1;
-    pthread_mutex_unlock(mutex);
-
-    // Wait for all threads to finish
+    // Stop the threadpool
     for (int i = 0; i < tp->num_threads; i++) {
         pthread_join(tp->threads[i], NULL);
     }
