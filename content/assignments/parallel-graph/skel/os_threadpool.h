@@ -4,24 +4,24 @@
 #include <pthread.h>
 
 typedef struct {
-    void *argument;
-    void (*task)(void *);
+	void *argument;
+	void (*task)(void *);
 } os_task_t;
 
 typedef struct _node{
-    os_task_t *task;
-    struct _node *next;
+	os_task_t *task;
+	struct _node *next;
 } os_task_queue_t;
 
 typedef struct {
-    unsigned int should_stop;
+	unsigned int should_stop;
 
-    unsigned int num_threads;
-    pthread_t *threads;
+	unsigned int num_threads;
+	pthread_t *threads;
 
-    os_task_queue_t *tasks;
-    pthread_mutex_t taskLock;
-    
+	os_task_queue_t *tasks;
+	pthread_mutex_t taskLock;
+	
 } os_threadpool_t;
 
 os_task_t *task_create(void *arg, void (*f)(void *));

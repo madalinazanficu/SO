@@ -4,14 +4,14 @@
 #include <pthread.h>
 
 typedef struct os_list_node_t {
-    void *info;
-    struct os_list_node_t *next;
+	void *info;
+	struct os_list_node_t *next;
 } os_list_node_t;
 
 typedef struct  {
-    struct os_list_node_t *first;
-    struct os_list_node_t *last;
-    pthread_mutex_t lock;
+	struct os_list_node_t *first;
+	struct os_list_node_t *last;
+	pthread_mutex_t lock;
 } os_queue_t;
 
 os_queue_t *queue_create(void);
