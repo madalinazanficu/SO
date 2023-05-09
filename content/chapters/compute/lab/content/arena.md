@@ -42,7 +42,7 @@ Most programming languages provide a more advanced API for handling parallel com
 ### `std.parallelism` in D
 
 D language's standard library exposes the [`std.parallelism`](https://dlang.org/phobos/std_parallelism.html), which provides a series of parallel processing functions.
-One such function is `reduce()` which splits an array between a given number of threads and applies a given operation to these chunks.
+One such function is `reduce()`, which splits an array between a given number of threads and applies a given operation to these chunks.
 In our case, the operation simply adds the elements to an accumulator: `a + b`.
 Follow and run the code in `support/sum-array/d/sum_array_threads_reduce.d`.
 
@@ -62,7 +62,7 @@ In this case, we instruct the compiler to perform a reduce of the array, using t
 This reduction uses threads to calculate the sum, similar to `summ_array_threads.c`, but in a much more optimised form.
 
 Now compile and run the `sum_array_threads_openmp` binary using 1, 2, 4, and 8 threads as before.
-You'll see lower running times than `sum_array_threads` due to the highly-optimised code emmited by the compiler.
+You'll see lower running times than `sum_array_threads` due to the highly-optimised code emitted by the compiler.
 For this reason and because library functions are usually much better tested than your own code, it is always preferred to use a library function for a given task.
 
 ## Shared Memory
@@ -103,7 +103,7 @@ We'll leave `fork()` for later.
 student@os:~/.../support/sleepy$ strace -e execve -ff -o syscalls ./sleepy_creator
 ```
 
-At this point you will get two files whose names start with `syscalls`, followed by some numbers.
+At this point, you will get two files whose names start with `syscalls`, followed by some numbers.
 Those numbers are the PIDs of the parent and the child process.
 Therefore, the file with the higher number contains logs of the `execve` and `clone` syscalls issued by the parent process, while
 the other logs those two syscalls when made by the child process.
@@ -139,7 +139,7 @@ So we need a way to "save" the `mini_shell` process before `exec()`-ing our comm
 Find a way to do this.
 
 > **Hint**:  You can see what `sleepy` does and draw inspiration from there.
-> Use `strace` to also list the calls to `clone()` perfromed by `sleepy` or its children.
+> Use `strace` to also list the calls to `clone()` performed by `sleepy` or its children.
 > [Remember](#threads-and-processes-clone) what `clone()` is used for and use its parameters to deduce which of the two scenarios happens to `sleepy`.
 
 **Moral of the story**: We can add another step to the moral of [our previous story](./processes.md#practice-fork).
@@ -155,7 +155,7 @@ Use whatever API is provided by your language of choice for creating and waiting
 
 ## The GIL
 
-Throughout this lab you might have noticed that there were no thread exercises _in Python_.
+Throughout this lab, you might have noticed that there were no thread exercises _in Python_.
 If you did, you probably wondered why.
 It's not because Python does not support threads, because it does, but because of a mechanism called the **Global Interpreter Lock**, or GIL.
 As its name suggests, this is a lock implemented inside most commonly used Python interpreter (CPython), which only allows **one** thread to run at a given time.
@@ -170,7 +170,7 @@ So it doesn't hurt them to run concurrently, instead of in parallel.
 
 Do not make the confusion to believe threads in Python are [user-level threads](./scheduling.md#user-level-vs-kernel-level-threads).
 [`threading.Thread`](https://docs.python.org/3/library/threading.html#threading.Thread)s are kernel-level threads.
-It's just that they are forced to run concurrenntly by the GIL.
+It's just that they are forced to run concurrently by the GIL.
 
 ### Practice: Array Sum in Python
 
@@ -200,10 +200,10 @@ In addition, it also introduces the risk of _deadlocks_.
 You can read more on this topic [in this article](https://realpython.com/python-gil/) and if you think eliminating the GIL looks like an easy task, which should have been done long ago, check the requirements [here](https://wiki.python.org/moin/GlobalInterpreterLock).
 They're not trivial to meet.
 
-Single-threadedness is a common trope for interpreted languages to use some sort of GIL.
-[Ruby MRI, the reference Ruby interpreter](https://git.ruby-lang.org/ruby.git) uses a similar mechanism, called the [Global VM Lock](https://ivoanjo.me/blog/2022/07/17/tracing-ruby-global-vm-lock/).
+Single-threaded-ness is a common trope for interpreted languages to use some sort of GIL.
+[Ruby MRI, the reference Ruby interpreter](https://git.ruby-lang.org/ruby.git), uses a similar mechanism, called the [Global VM Lock](https://ivoanjo.me/blog/2022/07/17/tracing-ruby-global-vm-lock/).
 JavaScript is even more straightforward: it is single-threaded by design, also for GC-related reasons.
-It does, however support asynchronous actions, but these are executed on the same thread as every other code.
+It does, however, support asynchronous actions, but these are executed on the same thread as every other code.
 This is implemented by placing each instruction on a [call stack](https://medium.com/swlh/what-does-it-mean-by-javascript-is-single-threaded-language-f4130645d8a9).
 
 ## Atomic Assembly
@@ -213,7 +213,7 @@ Instead, we aim to get accustomed to the way in which the x86 ISA provides atomi
 
 This mechanism looks very simple.
 It is but **one instruction prefix**: `lock`.
-It is not an instruction with its own separate opcode, but a prefix that slightly modifie the opcode of the following instructions to make the CPU execute it atomically (i.e. with exclusive access to the data bus).
+It is not an instruction with its own separate opcode, but a prefix that slightly modifies the opcode of the following instructions to make the CPU execute it atomically (i.e. with exclusive access to the data bus).
 
 `lock` must only be place before an instruction that executes a _read-modify-write_ action.
 For example, we cannot place it before a `mov` instruction, as the action of a `mov` is simply `read` or `write`.
@@ -235,7 +235,62 @@ Go to `support/CLIST/`.
 In the file `clist.c` you'll find a simple implementation of an array list.
 Although correct, it is not (yet) thread-safe.
 
-The code in `test.c` verifies its single-threaded correctness while the one in `test_parallel.c` verifies it works properly with multiple threads.
+The code in `test.c` verifies its single-threaded correctness, while the one in `test_parallel.c` verifies it works properly with multiple threads.
 Your task is to synchronize this data structure using whichever primitives you like.
 Try to keep the implementation efficient.
 Aim to decrease your running times as much as you can.
+
+## Minor and Major Page Faults
+
+The code in `support/page-faults/page_faults.c` generates some minor and major page faults.
+Open 2 terminals: one in which you will run the program, and one which will monitor the page faults of the program.
+In the monitoring terminal, run the following command:
+
+```console
+watch -n 1 'ps -eo min_flt,maj_flt,cmd | grep ./page_faults | head -n 1'
+```
+
+Compile the program and run it in the other terminal.
+You must press `enter` one time, before the program will prompt you to press `enter` more times.
+Watch the first number on the monitoring terminal;
+it increases.
+Those are the minor page faults.
+
+### Minor Page Faults
+
+A minor page fault is generated whenever a requested page is present in the physical memory, as a frame, but that frame isn't allocated to the process generating the request.
+These types of page faults are the most common, and they happen when calling functions from dynamic libraries, allocating heap memory, loading programs, reading files that have been cached, and many more situations.
+Now back to the program.
+
+The monitoring command already starts with some minor page faults, generated when loading the program.
+
+After pressing `enter`, the number increases, because a function from a dynamic library (libc) is fetched when the first `printf()` is executed.
+Subsequent calls to functions that are in the same memory page as `printf()` won't generate other page faults.
+
+After allocating the 100 Bytes, you might not see the number of page faults increase.
+This is because the "bookkeeping" data allocated by `malloc()` was able to fit in an already mapped page.
+The second allocation, the 1GB one, will always gnereate one minor page fault - for the bookkeeping data about the allocated memory zone.
+Notice that not all the pages for the 1GB are allocated.
+They are allocated - and generate page faults - when modified.
+By now you should know that this mechanism is called [copy-on-write](copy-on-write.md).
+
+Continue with pressing `enter` and observing the effects util you reach opening `file.txt`.
+
+Note that neither opening a file, getting information about it, nor mapping it in memory using `mmap()`, generate page faults.
+Also note the `posix_fadvise()` call after the one to `fstat()`.
+With this call we force the OS to not cache the file, so we can generate a **major page fault**.
+
+### Major Page Faults
+
+Major page faults happen when a page is requested, but it isn't present in the physical memory.
+These types of page faults happen in 2 situations:
+
+* a page that was swapped out (to the disk), due to lack of memory, is now accessed - this case is harder to show
+* the OS needs to read a file from the disk, because the file contents aren't present in the cache - the case we are showing now
+
+Press `enter` to print the file contents.
+Note the second number go up in the monitoring terminal.
+
+Comment the `posix_fadvise()` call, recompile the program, and run it again.
+You won't get any major page fault, because the file contents are cached by the OS, to avoid those page faults.
+As a rule, the OS will avoid major page faults whenever possible, because they are very costly in terms of running time.
