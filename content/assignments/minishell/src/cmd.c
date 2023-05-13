@@ -71,12 +71,76 @@ static int shell_exit(void)
 {
 	free(path);
 	free(cwd);
-	//exit(EXIT_SUCCESS);
-
-	//printf("Exit Exit\n");
-	//return EXIT_SUCCESS; /* TODO: Replace with actual exit code. */
 	return SHELL_EXIT;
 }
+
+
+int redirections(simple_command_t *s) {
+
+	int shell_status = 0;
+
+	// Extract file names and flags from the command
+	char *in = get_word(s->in);
+	char *out = get_word(s->out);
+	char *err = get_word(s->err);
+	int io_flags = s->io_flags;
+	int flags = 0;
+
+	// Create the flags based on APPEND or TRUNC mode
+	if (io_flags == 2 || io_flags == 1) {
+		flags = O_WRONLY | O_CREAT | O_APPEND;
+	} else {
+		flags = O_WRONLY | O_CREAT | O_TRUNC;
+	}
+
+	// Input redirection
+	if (in != NULL) {
+		int fd = open(in, O_RDONLY, 0644);
+		if (fd < 0) {
+			shell_status = SHELL_EXIT;
+		}
+		dup2(fd, STDIN_FILENO);
+		close(fd);
+	}
+
+	// Both output and error redirection
+	if (out != NULL && err != NULL) {
+		int fd = open(out, flags, 0644);
+		if (fd < 0) {
+			shell_status = SHELL_EXIT;
+		}
+
+		// The file descriptor is duplicated for both STDOUT and STDERR
+		dup2(fd, STDOUT_FILENO);
+		dup2(fd, STDERR_FILENO);
+		close(fd);
+		return shell_status;
+	}
+
+
+	// Redirection only for output
+	if (out != NULL) {
+		int fd = open(out, flags, 0644);
+		if (fd < 0) {
+			shell_status = SHELL_EXIT;
+		}
+		dup2(fd, STDOUT_FILENO);
+		close(fd);
+	}
+
+	// Redirection only for error
+	if (err != NULL) {
+		int fd = open(err, flags, 0644);
+		if (fd < 0) {
+			shell_status = SHELL_EXIT;
+		}
+		dup2(fd, STDERR_FILENO);
+		close(fd);
+	}
+
+	return shell_status;
+}
+
 
 /**
  * Parse a simple command (internal, environment variable assignment,
@@ -99,7 +163,6 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 
 	} else if (strcmp(verb, "exit") == 0 || strcmp(verb, "quit") == 0) {
 		free(verb);
-		//printf("Exit\n");
 		return shell_exit();
 
 	} else if (strcmp(verb, "pwd") == 0) {
@@ -139,11 +202,10 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		
 		// Child process
 		case 0:
-			//printf("Child process\n");
+
+			shell_status = redirections(s);
 			execvp(verb, args);
 			exit(EXIT_SUCCESS);
-			//printf("Child process\n");
-
 
 		// Parent process
 		default:
@@ -197,7 +259,6 @@ int parse_command(command_t *c, int level, command_t *father)
 	if (c->op == OP_NONE) {
 		/* TODO: Execute a simple command. */
 		return parse_simple(c->scmd, level, father);
-		// return 0; /* TODO: Replace with actual exit code of command. */
 	}
 
 	switch (c->op) {
