@@ -3,9 +3,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <stdio.h>
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "cmd.h"
 #include "utils.h"
@@ -13,14 +16,52 @@
 #define READ		0
 #define WRITE		1
 
+extern char **environ;
+
+word_t *path = NULL;
+char *cwd = NULL;
+
+static char *pwd()
+{
+	// Allocate memory only once then reuse it
+	if (cwd == NULL) {
+		cwd = calloc(1024, sizeof(char));
+	}
+
+	// Get the current working directory using getcwd()
+	getcwd(cwd, 1024);
+
+
+	// Print the result
+	printf("%s\n", cwd);
+
+	return cwd;
+}
+
 /**
  * Internal change-directory command.
  */
 static bool shell_cd(word_t *dir)
 {
-	/* TODO: Execute cd. */
+	// First call -> allocate memory for the global path
+	if (path == NULL) {
+		path = calloc(1, sizeof(word_t));
+	}
 
-	return 0;
+	// The current dir needs to be expanded in order to navigate to it
+	char *expanded_path = get_word(dir);
+	int value = chdir(expanded_path);
+	free(expanded_path);
+
+
+	// Failed to change directory
+	if (value == -1) {
+		return false;
+	}
+
+	// Success
+	path = dir;
+	return true;
 }
 
 /**
@@ -28,9 +69,13 @@ static bool shell_cd(word_t *dir)
  */
 static int shell_exit(void)
 {
-	/* TODO: Execute exit/quit. */
+	free(path);
+	free(cwd);
+	//exit(EXIT_SUCCESS);
 
-	return 0; /* TODO: Replace with actual exit code. */
+	//printf("Exit Exit\n");
+	//return EXIT_SUCCESS; /* TODO: Replace with actual exit code. */
+	return SHELL_EXIT;
 }
 
 /**
@@ -40,22 +85,84 @@ static int shell_exit(void)
 static int parse_simple(simple_command_t *s, int level, command_t *father)
 {
 	/* TODO: Sanity checks. */
+	if (s == NULL) {
+		return SHELL_EXIT;
+	}
 
-	/* TODO: If builtin command, execute the command. */
+	
+	/* If builtin command, execute the command. */
+	char *verb = get_word(s->verb);
+	if (strcmp(verb, "cd") == 0) {
+		free(verb);
+		shell_cd(s->params);
+		return EXIT_SUCCESS;
+
+	} else if (strcmp(verb, "exit") == 0 || strcmp(verb, "quit") == 0) {
+		free(verb);
+		//printf("Exit\n");
+		return shell_exit();
+
+	} else if (strcmp(verb, "pwd") == 0) {
+		free(verb);
+		pwd();
+		return EXIT_SUCCESS;
+	}
 
 	/* TODO: If variable assignment, execute the assignment and return
 	 * the exit status.
 	 */
 
-	/* TODO: If external command:
+
+	/* If external command:
 	 *   1. Fork new process
 	 *     2c. Perform redirections in child
 	 *     3c. Load executable in child
 	 *   2. Wait for child
 	 *   3. Return exit status
 	 */
+	pid_t ret_pid, pid;
+	int status, shell_status = 0;
+	
+	
+	// Extract parameters for child process
+	int args_size = 0;
+	char **args = get_argv(s, &args_size);
 
-	return 0; /* TODO: Replace with actual exit status. */
+
+	pid = fork();
+	switch (pid) {
+
+		// Error
+		case -1:
+			shell_status = SHELL_EXIT;
+			break;
+		
+		// Child process
+		case 0:
+			//printf("Child process\n");
+			execvp(verb, args);
+			exit(EXIT_SUCCESS);
+			//printf("Child process\n");
+
+
+		// Parent process
+		default:
+			ret_pid = waitpid(pid, &status, 0);
+			if (ret_pid < 0) {
+				shell_status = SHELL_EXIT;
+			}
+			break;
+	}
+
+	// Free the allocated resources
+	for (int i = 0; i < args_size; i++) {
+		free(args[i]);
+	}
+
+	free(args);
+	free(verb);
+
+	return shell_status; /* TODO: Replace with actual exit status. */
 }
 
 /**
@@ -89,8 +196,8 @@ int parse_command(command_t *c, int level, command_t *father)
 
 	if (c->op == OP_NONE) {
 		/* TODO: Execute a simple command. */
-
-		return 0; /* TODO: Replace with actual exit code of command. */
+		return parse_simple(c->scmd, level, father);
+		// return 0; /* TODO: Replace with actual exit code of command. */
 	}
 
 	switch (c->op) {
