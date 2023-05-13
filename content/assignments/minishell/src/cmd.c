@@ -16,52 +16,23 @@
 #define READ		0
 #define WRITE		1
 
-extern char **environ;
-
-word_t *path = NULL;
-char *cwd = NULL;
-
-static char *pwd()
-{
-	// Allocate memory only once then reuse it
-	if (cwd == NULL) {
-		cwd = calloc(1024, sizeof(char));
-	}
-
-	// Get the current working directory using getcwd()
-	getcwd(cwd, 1024);
-
-
-	// Print the result
-	printf("%s\n", cwd);
-
-	return cwd;
-}
-
 /**
  * Internal change-directory command.
  */
 static bool shell_cd(word_t *dir)
 {
-	// First call -> allocate memory for the global path
-	if (path == NULL) {
-		path = calloc(1, sizeof(word_t));
-	}
-
 	// The current dir needs to be expanded in order to navigate to it
 	char *expanded_path = get_word(dir);
 	int value = chdir(expanded_path);
 	free(expanded_path);
 
-
-	// Failed to change directory
+	// Failed to change directory, exit code is 1
 	if (value == -1) {
-		return false;
+		return 1;
 	}
 
-	// Success
-	path = dir;
-	return true;
+	// Success code is 0
+	return 0;
 }
 
 /**
@@ -69,8 +40,6 @@ static bool shell_cd(word_t *dir)
  */
 static int shell_exit(void)
 {
-	free(path);
-	free(cwd);
 	return SHELL_EXIT;
 }
 
@@ -137,8 +106,42 @@ int redirections(simple_command_t *s) {
 		dup2(fd, STDERR_FILENO);
 		close(fd);
 	}
+	free(in);
+	free(out);
+	free(err);
 
 	return shell_status;
+}
+
+int redirect_output(simple_command_t *s) {
+	int status = 0;
+
+	// Extract the file name for output redirection
+	char *out = get_word(s->out);
+	if (out != NULL) {
+
+		int fd = open(out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (fd < 0) {
+			status = SHELL_EXIT;
+		}
+		close(fd);
+	}
+
+	// Extract the file name for error redirection
+	char *err = get_word(s->err);
+	if (err != NULL) {
+
+		int fd = open(err, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (fd < 0) {
+			status = SHELL_EXIT;
+		}
+		close(fd);
+	}
+
+	// Free the allocated resources
+	free(out);
+	free(err);
+	return status;
 }
 
 
@@ -148,27 +151,29 @@ int redirections(simple_command_t *s) {
  */
 static int parse_simple(simple_command_t *s, int level, command_t *father)
 {
+	int status, shell_status = 0;
+
 	/* TODO: Sanity checks. */
 	if (s == NULL) {
 		return SHELL_EXIT;
 	}
 
-	
 	/* If builtin command, execute the command. */
 	char *verb = get_word(s->verb);
 	if (strcmp(verb, "cd") == 0) {
 		free(verb);
-		shell_cd(s->params);
-		return EXIT_SUCCESS;
+
+		// Redirect the output before executing the command
+		redirect_output(s);
+
+		// Execute the command
+		int cd_result = shell_cd(s->params);
+
+		return cd_result;
 
 	} else if (strcmp(verb, "exit") == 0 || strcmp(verb, "quit") == 0) {
 		free(verb);
 		return shell_exit();
-
-	} else if (strcmp(verb, "pwd") == 0) {
-		free(verb);
-		pwd();
-		return EXIT_SUCCESS;
 	}
 
 	/* TODO: If variable assignment, execute the assignment and return
@@ -184,7 +189,6 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	 *   3. Return exit status
 	 */
 	pid_t ret_pid, pid;
-	int status, shell_status = 0;
 	
 	
 	// Extract parameters for child process
@@ -197,21 +201,25 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 
 		// Error
 		case -1:
-			shell_status = SHELL_EXIT;
+			shell_status = -1;
 			break;
 		
 		// Child process
 		case 0:
-
-			shell_status = redirections(s);
-			execvp(verb, args);
-			exit(EXIT_SUCCESS);
+			//printf("Child process\n");
+			redirections(s);
+			shell_status = execvp(verb, args);
+			//printf("shell_status: %d\n", shell_status);
+			exit(shell_status);
 
 		// Parent process
 		default:
 			ret_pid = waitpid(pid, &status, 0);
 			if (ret_pid < 0) {
-				shell_status = SHELL_EXIT;
+				shell_status = -1;
+			}
+			if (WIFEXITED(status)) {
+				shell_status = WEXITSTATUS(status);
 			}
 			break;
 	}
@@ -224,6 +232,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	free(args);
 	free(verb);
 
+	//printf("shell_status: %d\n", shell_status);
 	return shell_status; /* TODO: Replace with actual exit status. */
 }
 
@@ -261,25 +270,66 @@ int parse_command(command_t *c, int level, command_t *father)
 		return parse_simple(c->scmd, level, father);
 	}
 
+	int out1 = 0;
+	int out2 = 0;
+
 	switch (c->op) {
 	case OP_SEQUENTIAL:
 		/* TODO: Execute the commands one after the other. */
+		parse_command(c->cmd1, level + 1, c);
+		parse_command(c->cmd2, level + 1, c);
+
 		break;
 
 	case OP_PARALLEL:
 		/* TODO: Execute the commands simultaneously. */
 		break;
 
+
+	// This is: cmd1 || cmd2 -> ma opresc la primul success, return code = 0
 	case OP_CONDITIONAL_NZERO:
 		/* TODO: Execute the second command only if the first one
 		 * returns non zero.
 		 */
+
+		out1 = parse_command(c->cmd1, level + 1, c);
+		//printf("output_cmd1: %d\n", out1);
+
+		// if (strcmp(get_word(c->cmd1->scmd->verb), "false") == 0) {
+		// 	break;
+		// }
+
+		// if (out1 == 0 && strcmp(get_word(c->cmd1->scmd->verb), "false") != 0) {
+		// 	break;
+		// }
+		if (out1 == 0) {
+			break;
+		}
+
+		out2 = parse_command(c->cmd2, level + 1, c);
+		//printf("output_cmd2: %d\n", out2);
 		break;
 
+
+	// This is: cmd1 && cmd2 -> ma opresc la primul fail, return code != 0
 	case OP_CONDITIONAL_ZERO:
 		/* TODO: Execute the second command only if the first one
 		 * returns zero.
 		 */
+		out1 = parse_command(c->cmd1, level + 1, c);
+		//printf("output_cmd1: %d\n", out1);
+
+		// if (strcmp(get_word(c->cmd1->scmd->verb), "false") == 0) {
+		// 	break;
+		// }
+
+		if (out1 != 0) {
+			break;
+		}
+
+		out2 = parse_command(c->cmd2, level + 1, c);
+		//printf("output_cmd2: %d\n", out2);
+
 		break;
 
 	case OP_PIPE:
