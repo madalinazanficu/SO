@@ -206,10 +206,8 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		
 		// Child process
 		case 0:
-			//printf("Child process\n");
 			redirections(s);
 			shell_status = execvp(verb, args);
-			//printf("shell_status: %d\n", shell_status);
 			exit(shell_status);
 
 		// Parent process
@@ -232,8 +230,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	free(args);
 	free(verb);
 
-	//printf("shell_status: %d\n", shell_status);
-	return shell_status; /* TODO: Replace with actual exit status. */
+	return shell_status;
 }
 
 /**
@@ -272,6 +269,7 @@ int parse_command(command_t *c, int level, command_t *father)
 
 	int out1 = 0;
 	int out2 = 0;
+	int status = 0;
 
 	switch (c->op) {
 	case OP_SEQUENTIAL:
@@ -293,44 +291,28 @@ int parse_command(command_t *c, int level, command_t *father)
 		 */
 
 		out1 = parse_command(c->cmd1, level + 1, c);
-		//printf("output_cmd1: %d\n", out1);
-
-		// if (strcmp(get_word(c->cmd1->scmd->verb), "false") == 0) {
-		// 	break;
-		// }
-
-		// if (out1 == 0 && strcmp(get_word(c->cmd1->scmd->verb), "false") != 0) {
-		// 	break;
-		// }
 		if (out1 == 0) {
-			break;
+			return 0;
 		}
-
 		out2 = parse_command(c->cmd2, level + 1, c);
-		//printf("output_cmd2: %d\n", out2);
+		status = out2;
 		break;
 
 
-	// This is: cmd1 && cmd2 -> ma opresc la primul fail, return code != 0
+	// This is: cmd1 && cmd2 -> ma opresc la primul fail, return code == 1
 	case OP_CONDITIONAL_ZERO:
 		/* TODO: Execute the second command only if the first one
 		 * returns zero.
 		 */
+
 		out1 = parse_command(c->cmd1, level + 1, c);
-		//printf("output_cmd1: %d\n", out1);
-
-		// if (strcmp(get_word(c->cmd1->scmd->verb), "false") == 0) {
-		// 	break;
-		// }
-
 		if (out1 != 0) {
-			break;
+			return 1;
 		}
-
 		out2 = parse_command(c->cmd2, level + 1, c);
-		//printf("output_cmd2: %d\n", out2);
-
+		status = out2;
 		break;
+
 
 	case OP_PIPE:
 		/* TODO: Redirect the output of the first command to the
@@ -342,5 +324,5 @@ int parse_command(command_t *c, int level, command_t *father)
 		return SHELL_EXIT;
 	}
 
-	return 0; /* TODO: Replace with actual exit code of command. */
+	return status; /* TODO: Replace with actual exit code of command. */
 }
