@@ -72,17 +72,39 @@ int redirections(simple_command_t *s) {
 		close(fd);
 	}
 
+	// TODO: document why open only the err
 	// Both output and error redirection
 	if (out != NULL && err != NULL) {
-		int fd = open(out, flags, 0644);
-		if (fd < 0) {
-			shell_status = SHELL_EXIT;
+
+
+		// SDOUT and STDERR are redirected to the same file
+		if (strcmp(out, err) == 0) {
+			int fd = open(out, flags, 0644);
+			if (fd < 0) {
+				shell_status = SHELL_EXIT;
+			}
+
+			// The file descriptor is duplicated for both STDOUT and STDERR
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+			close(fd);
+			return shell_status;
 		}
 
-		// The file descriptor is duplicated for both STDOUT and STDERR
-		dup2(fd, STDOUT_FILENO);
-		dup2(fd, STDERR_FILENO);
-		close(fd);
+		// SDOUT and STDERR are redirected to different files
+		int fd_out = open(out, flags, 0644);
+		if (fd_out < 0) {
+			shell_status = SHELL_EXIT;
+		}
+		int fd_err = open(err, flags, 0644);
+		if (fd_err < 0) {
+			shell_status = SHELL_EXIT;
+		}
+		
+		dup2(fd_out, STDOUT_FILENO);
+		dup2(fd_err, STDERR_FILENO);
+		close(fd_out);
+		close(fd_err);
 		return shell_status;
 	}
 
@@ -179,7 +201,29 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	/* TODO: If variable assignment, execute the assignment and return
 	 * the exit status.
 	 */
+	char *var = get_word(s->verb);
+	if (strchr(var, '=') != NULL) {
 
+		// src=dst operation
+		char *src = s->verb->string;
+		char *operator;
+		char *dst;
+
+		if (s->verb->next_part != NULL) {
+			operator = s->verb->next_part->string;
+
+			if (s->verb->next_part->next_part != NULL) {
+				dst = get_word(s->verb->next_part->next_part);
+
+				// Assign the value to the variable
+				setenv(src, dst, 1);
+
+				shell_status = 0;
+				return shell_status;
+			}
+		}
+	}
+	
 
 	/* If external command:
 	 *   1. Fork new process
@@ -251,8 +295,76 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 		command_t *father)
 {
 	/* TODO: Redirect the output of cmd1 to the input of cmd2. */
+	int pipefd[2];
+	pid_t pid1, pid2;
+	int out1, out2;
 
-	return true; /* TODO: Replace with actual exit status. */
+	// Create the pipe
+	int pipe_status = pipe(pipefd);
+	if (pipe_status == -1) {
+		return false;
+	}
+
+	// Create the first child process for cmd1
+	pid1 = fork();
+	switch (pid1) {
+
+		// Error
+		case -1:
+			return false;
+
+		// Child process
+		case 0:
+			close(pipefd[READ]);
+			dup2(pipefd[WRITE], STDOUT_FILENO);
+			close(pipefd[WRITE]);
+			out1 = parse_command(cmd1, level + 1, father);
+			exit(out1);
+
+		// Parent process
+		default:
+			break;
+	}
+
+	// Create the second child process for cmd2
+	pid2 = fork();
+	switch (pid2) {
+
+		// Error
+		case -1:
+			return false;
+
+		// Child process
+		case 0:
+			close(pipefd[WRITE]);
+			dup2(pipefd[READ], STDIN_FILENO);
+			close(pipefd[READ]);
+			out2 = parse_command(cmd2, level + 1, father);
+			exit(out2);
+
+		// Parent process
+		default:
+			break;
+	}
+
+	int status_child1, status_child2;
+	int ret_pid1, ret_pid2;
+
+	close(pipefd[READ]);
+	close(pipefd[WRITE]);
+
+	ret_pid1 = waitpid(pid1, &status_child1, 0);
+	ret_pid2 = waitpid(pid2, &status_child2, 0);
+
+	if (ret_pid2 < 0) {
+		pipe_status = -1;
+	}
+
+	if (WIFEXITED(status_child2)) {
+		pipe_status = WEXITSTATUS(status_child2);
+	}
+
+	return pipe_status;
 }
 
 /**
@@ -279,6 +391,7 @@ int parse_command(command_t *c, int level, command_t *father)
 
 		break;
 
+	// cmd1 & cmd2 -> pornesc 2 procese in paralel
 	case OP_PARALLEL:
 		/* TODO: Execute the commands simultaneously. */
 		break;
@@ -318,6 +431,7 @@ int parse_command(command_t *c, int level, command_t *father)
 		/* TODO: Redirect the output of the first command to the
 		 * input of the second.
 		 */
+		status = run_on_pipe(c->cmd1, c->cmd2, level + 1, c);
 		break;
 
 	default:
