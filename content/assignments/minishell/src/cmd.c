@@ -43,6 +43,10 @@ static int shell_exit(void)
 	return SHELL_EXIT;
 }
 
+int redirect_out(simple_command_t *s) {
+	char *out = get_word(s->out);
+}
+
 
 int redirections(simple_command_t *s) {
 
@@ -252,6 +256,9 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		case 0:
 			redirections(s);
 			shell_status = execvp(verb, args);
+			if (shell_status == -1) {
+				printf("Execution failed for '%s'\n", verb);
+			}
 			exit(shell_status);
 
 		// Parent process
@@ -277,16 +284,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	return shell_status;
 }
 
-/**
- * Process two commands in parallel, by creating two children.
- */
-static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
-		command_t *father)
-{
-	/* TODO: Execute cmd1 and cmd2 simultaneously. */
 
-	return true; /* TODO: Replace with actual exit status. */
-}
 
 /**
  * Run commands by creating an anonymous pipe (cmd1 | cmd2).
@@ -368,6 +366,78 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 }
 
 /**
+ * Process two commands in parallel, by creating two children.
+ */
+static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
+		command_t *father)
+{
+	int parallel_status = 0;
+
+	/* TODO: Execute cmd1 and cmd2 simultaneously. */
+	int pid1, pid2;
+	int out1, out2;
+
+	int status_child1, status_child2;
+	int ret_pid1, ret_pid2;
+
+	// Create the first child process for cmd1
+	pid1 = fork();
+
+	switch (pid1) {
+
+		// Error
+		case -1:
+			return false;
+
+		// Child process
+		case 0:
+			out1 = parse_command(cmd1, level + 1, father);
+			exit(out1);
+
+		// Parent process
+		default:
+			break;
+	}
+
+	// Create the second child process for cmd2
+	pid2 = fork();
+	switch (pid2) {
+
+		// Error
+		case -1:
+			return false;
+
+		// Child process
+		case 0:
+			out2 = parse_command(cmd2, level + 1, father);
+			exit(out2);
+
+		// Parent process
+		default:
+			ret_pid2 = waitpid(pid2, &status_child2, 0);
+			if (ret_pid2 < 0) {
+				parallel_status = -1;
+			}
+
+			if (WIFEXITED(status_child2)) {
+				parallel_status = WEXITSTATUS(status_child2);
+			}
+			break;
+	}
+
+	ret_pid1 = waitpid(pid1, &status_child1, 0);
+	if (ret_pid1 < 0) {
+		parallel_status = -1;
+	}
+
+	if (WIFEXITED(status_child1)) {
+		parallel_status = WEXITSTATUS(status_child1);
+	}
+
+	return parallel_status; /* TODO: Replace with actual exit status. */
+}
+
+/**
  * Parse and execute a command.
  */
 int parse_command(command_t *c, int level, command_t *father)
@@ -394,6 +464,7 @@ int parse_command(command_t *c, int level, command_t *father)
 	// cmd1 & cmd2 -> pornesc 2 procese in paralel
 	case OP_PARALLEL:
 		/* TODO: Execute the commands simultaneously. */
+		status = run_in_parallel(c->cmd1, c->cmd2, level + 1, c);
 		break;
 
 
