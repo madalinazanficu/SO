@@ -25,12 +25,12 @@ static bool shell_cd(word_t *dir)
 	// The current dir needs to be expanded in order to navigate to it
 	char *expanded_path = get_word(dir);
 	int value = chdir(expanded_path);
-
 	free(expanded_path);
 
-	// Failed to change directory
-	if (value == -1)
+	// Failed to change directory, exit code is 1
+	if (value == -1) {
 		return 1;
+	}
 
 	// Success code is 0
 	return 0;
@@ -56,9 +56,8 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	if (s == NULL)
 		return SHELL_EXIT;
 
-	char *verb = get_word(s->verb);
-
 	// BUILD-IN COMMANDS
+	char *verb = get_word(s->verb);
 	if (strcmp(verb, "cd") == 0) {
 		free(verb);
 
@@ -76,7 +75,6 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 
 	// VARIABLE ASSIGNMENT, SUCH AS: var=value
 	char *var = get_word(s->verb);
-
 	if (strchr(var, '=') != NULL) {
 		const char *src = s->verb->string;
 
@@ -86,15 +84,10 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 
 				// Assign the value to the variable
 				setenv(src, dst, 1);
-
-				free(dst);
-				free(var);
-				free(verb);
 				return 0;
 			}
 	}
-	free(var);
-
+	
 
 	// EXTERNAL COMMANDS
 	int args_size = 0;
@@ -104,30 +97,30 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	// Step 1: Fork new process
 	pid = fork();
 	switch (pid) {
-	case -1:
-		shell_status = -1;
-		break;
-
-	case 0:
-		// Step 2.1: Perform redirections in child
-		redirects(s);
-
-		// Step 2.2: Load executable in child
-		shell_status = execvp(verb, args);
-		if (shell_status == -1)
-			printf("Execution failed for '%s'\n", verb);
-
-		// Step 2.3: Finish the process for the child
-		exit(shell_status);
-
-	default:
-		// Step 2.4: Wait for child
-		ret_pid = waitpid(pid, &status, 0);
-		if (ret_pid < 0)
+		case -1:
 			shell_status = -1;
-		if (WIFEXITED(status))
-			shell_status = WEXITSTATUS(status);
-		break;
+			break;
+	
+		case 0:
+			// Step 2.1: Perform redirections in child
+			redirects(s);
+
+			// Step 2.2: Load executable in child
+			shell_status = execvp(verb, args);
+			if (shell_status == -1)
+				printf("Execution failed for '%s'\n", verb);
+	
+			// Step 2.3: Finish the process for the child
+			exit(shell_status);
+
+		default:
+			// Step 2.4: Wait for child
+			ret_pid = waitpid(pid, &status, 0);
+			if (ret_pid < 0)
+				shell_status = -1;
+			if (WIFEXITED(status))
+				shell_status = WEXITSTATUS(status);
+			break;
 	}
 
 	// Free the allocated resources
@@ -155,56 +148,57 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 
 	// Create the pipe for the two commands
 	int pipe_status = pipe(pipefd);
-
-	if (pipe_status == -1)
+	if (pipe_status == -1) {
 		return false;
+	}
 
 	// Create the first child process for cmd1
 	pid1 = fork();
 	switch (pid1) {
-	case -1:
-		return false;
+		case -1:
+			return false;
 
-	case 0:
-		close(pipefd[READ]);
-		// The output for cmd1 is written in the pipe write end
-		dup2(pipefd[WRITE], STDOUT_FILENO);
-		close(pipefd[WRITE]);
-		out1 = parse_command(cmd1, level + 1, father);
+		case 0:
+			close(pipefd[READ]);
+			// The output for cmd1 is written in the pipe write end
+			dup2(pipefd[WRITE], STDOUT_FILENO);
+			close(pipefd[WRITE]);
+			out1 = parse_command(cmd1, level + 1, father);
 
-		exit(out1);
+			exit(out1);
 
-	default:
-		break;
+		default:
+			waitpid(pid1, &status_child1, 0);
 	}
 
 	// Create the second child process for cmd2
 	pid2 = fork();
 	switch (pid2) {
-	case -1:
-		return false;
+		case -1:
+			return false;
 
-	case 0:
-		close(pipefd[WRITE]);
-		// The input for cmd2 is taken from the pipe read end
-		dup2(pipefd[READ], STDIN_FILENO);
-		close(pipefd[READ]);
-		out2 = parse_command(cmd2, level + 1, father);
+		case 0:
+			close(pipefd[WRITE]);
+			// The input for cmd2 is taken from the pipe read end
+			dup2(pipefd[READ], STDIN_FILENO);
+			close(pipefd[READ]);
+			out2 = parse_command(cmd2, level + 1, father);
 
-		exit(out2);
+			exit(out2);
 
-	default:
-		waitpid(pid1, &status_child1, 0);
-		close(pipefd[WRITE]);
-		ret_pid2 = waitpid(pid2, &status_child2, 0);
-		if (ret_pid2 < 0)
-			pipe_status = -1;
+		default:
+			ret_pid2 = waitpid(pid2, &status_child2, 0);
+			if (ret_pid2 < 0) {
+				pipe_status = -1;
+			}
 
-		if (WIFEXITED(status_child2))
-			pipe_status = WEXITSTATUS(status_child2);
+			if (WIFEXITED(status_child2)) {
+				pipe_status = WEXITSTATUS(status_child2);
+			}
 	}
 
 	close(pipefd[READ]);
+	close(pipefd[WRITE]);
 	return pipe_status;
 }
 
@@ -225,34 +219,34 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 	pid1 = fork();
 
 	switch (pid1) {
-	case -1:
-		return false;
-	case 0:
-		out1 = parse_command(cmd1, level + 1, father);
-		exit(out1);
-	default:
-		break;
+		case -1:
+			return false;
+		case 0:
+			out1 = parse_command(cmd1, level + 1, father);
+			exit(out1);
+		default:
+			break;
 	}
 
 	// Create the second child process for cmd2
 	pid2 = fork();
 	switch (pid2) {
-	case -1:
-		return false;
+		case -1:
+			return false;
 
-	case 0:
-		out2 = parse_command(cmd2, level + 1, father);
-		exit(out2);
+		case 0:
+			out2 = parse_command(cmd2, level + 1, father);
+			exit(out2);
 
-	default:
-		ret_pid2 = waitpid(pid2, &status_child2, 0);
+		default:
+			ret_pid2 = waitpid(pid2, &status_child2, 0);
 
-		if (ret_pid2 < 0)
-			parallel_status = -1;
+			if (ret_pid2 < 0)
+				parallel_status = -1;
 
-		if (WIFEXITED(status_child2))
-			parallel_status = WEXITSTATUS(status_child2);
-		break;
+			if (WIFEXITED(status_child2))
+				parallel_status = WEXITSTATUS(status_child2);
+			break;
 	}
 
 	ret_pid1 = waitpid(pid1, &status_child1, 0);
@@ -262,7 +256,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 	if (WIFEXITED(status_child1))
 		parallel_status = WEXITSTATUS(status_child1);
 
-	return parallel_status;
+	return parallel_status; /* TODO: Replace with actual exit status. */
 }
 
 /**
@@ -270,6 +264,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
  */
 int parse_command(command_t *c, int level, command_t *father)
 {
+	
 	if (c == NULL)
 		return SHELL_EXIT;
 
@@ -293,16 +288,18 @@ int parse_command(command_t *c, int level, command_t *father)
 	case OP_CONDITIONAL_NZERO:
 		out1 = parse_command(c->cmd1, level + 1, c);
 
-		if (out1 == 0)
+		if (out1 == 0) {
 			return 0;
+		}
 		return parse_command(c->cmd2, level + 1, c);
 
 	// cmd1 && cmd2 -> stop at first fail, when the return code != 0
 	case OP_CONDITIONAL_ZERO:
 		out1 = parse_command(c->cmd1, level + 1, c);
 
-		if (out1 != 0)
+		if (out1 != 0) {
 			return 1;
+		}
 		return parse_command(c->cmd2, level + 1, c);
 
 	// cmd1 | cmd2 -> output of cmd1 is the input of cmd2
